@@ -1,11 +1,16 @@
-// Анкета гостя. Пока ответы только выводятся в консоль —
-// отправку добавим позже в submitRsvp.
+// Анкета гостя. Ответы уходят в Google Apps Script,
+// а он уже пересылает их в Telegram (токен бота хранится там).
+
+// URL веб-приложения Apps Script (Deploy → Web app → URL, оканчивается на /exec)
+const RSVP_ENDPOINT =
+  "https://script.google.com/macros/s/AKfycbzDLRkr_x66pTBgnCaeho8FTg8HF2Uu-NjjXDitWhEu7iy1dguIQROLbFayErChtgJKcA/exec";
 
 const rsvpForm = document.querySelector(".rsvp__form");
 const attendingBlock = rsvpForm.querySelector(".rsvp__attending");
 const partnerField = rsvpForm.querySelector(".rsvp__partner");
 const rsvpError = rsvpForm.querySelector(".rsvp__error");
 const rsvpThanks = rsvpForm.querySelector(".rsvp__thanks");
+const rsvpSubmit = rsvpForm.querySelector(".rsvp__submit");
 
 // Скрытый блок выключаем, чтобы его поля не попали в ответ
 function toggleBlock(block, visible) {
@@ -38,8 +43,17 @@ function collectAnswers() {
   };
 }
 
-function submitRsvp(answers) {
-  console.log("Ответ на анкету:", answers);
+// text/plain — чтобы браузер не делал CORS preflight, который Apps Script не поддерживает
+async function submitRsvp(answers) {
+  const response = await fetch(RSVP_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(answers),
+  });
+  const result = await response.json();
+  if (!result.ok) {
+    throw new Error(result.error || "Не удалось отправить ответ");
+  }
 }
 
 function showError(text) {
@@ -53,7 +67,7 @@ rsvpForm.addEventListener("change", () => {
   rsvpError.hidden = true;
 });
 
-rsvpForm.addEventListener("submit", (event) => {
+rsvpForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const answers = collectAnswers();
 
@@ -68,10 +82,22 @@ rsvpForm.addEventListener("submit", (event) => {
   }
 
   rsvpError.hidden = true;
-  submitRsvp(answers);
-  rsvpForm.reset();
-  updateVisibility();
-  rsvpThanks.hidden = false;
+  rsvpThanks.hidden = true;
+  rsvpSubmit.disabled = true;
+  rsvpSubmit.textContent = "Отправляем…";
+
+  try {
+    await submitRsvp(answers);
+    rsvpForm.reset();
+    updateVisibility();
+    rsvpThanks.hidden = false;
+  } catch (error) {
+    console.error("Ошибка отправки анкеты:", error);
+    showError("Не получилось отправить ответ. Попробуйте ещё раз чуть позже.");
+  } finally {
+    rsvpSubmit.disabled = false;
+    rsvpSubmit.textContent = "Отправить";
+  }
 });
 
 updateVisibility();
